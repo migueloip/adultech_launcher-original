@@ -233,40 +233,44 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   }
 
   Widget _buildFontSizeStep() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          'Tamaño de letra',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: _isDarkMode ? Colors.white : Colors.black,
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 20),
+          Text(
+            'Tamaño de letra',
+            style: TextStyle(
+              fontSize: _fontSize + 8, // Cambio dinámico del título
+              fontWeight: FontWeight.bold,
+              color: _isDarkMode ? Colors.white : Colors.black,
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Selecciona el tamaño de letra que prefieras',
-          style: TextStyle(
-            fontSize: 16,
-            color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
+          const SizedBox(height: 20),
+          Text(
+            'Selecciona el tamaño de letra que prefieras',
+            style: TextStyle(
+              fontSize: _fontSize, // Cambio dinámico del subtítulo
+              color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 40),
-        Column(
-          children: [
-            _buildFontSizeOption('Pequeño', 14.0),
-            const SizedBox(height: 15),
-            _buildFontSizeOption('Mediano', 16.0),
-            const SizedBox(height: 15),
-            _buildFontSizeOption('Grande', 20.0),
-            const SizedBox(height: 15),
-            _buildFontSizeOption('Muy Grande', 24.0),
-          ],
-        ),
-      ],
+          const SizedBox(height: 40),
+          Column(
+            children: [
+              _buildFontSizeOption('Pequeño', 14.0),
+              const SizedBox(height: 15),
+              _buildFontSizeOption('Mediano', 16.0),
+              const SizedBox(height: 15),
+              _buildFontSizeOption('Grande', 20.0),
+              const SizedBox(height: 15),
+              _buildFontSizeOption('Muy Grande', 24.0),
+            ],
+          ),
+          const SizedBox(height: 100), // Espacio adicional para evitar sobreposición con botones
+        ],
+      ),
     );
   }
 
@@ -352,54 +356,57 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   }
 
   Widget _buildEmergencyContactStep() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          'Contacto de emergencia',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: _isDarkMode ? Colors.white : Colors.black,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Este número se llamará cuando presiones el botón de emergencia',
-          style: TextStyle(
-            fontSize: 16,
-            color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 40),
-        TextField(
-          controller: _emergencyContactController,
-          keyboardType: TextInputType.phone,
-          style: TextStyle(
-            fontSize: 20,
-            color: _isDarkMode ? Colors.white : Colors.black,
-          ),
-          decoration: InputDecoration(
-            hintText: 'Número de teléfono',
-            hintStyle: TextStyle(
-              color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'Contacto de emergencia',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: _isDarkMode ? Colors.white : Colors.black,
             ),
-            filled: true,
-            fillColor: _isDarkMode ? Colors.grey[800] : Colors.grey[100],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide.none,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Este número se llamará cuando presiones el botón de emergencia',
+            style: TextStyle(
+              fontSize: 16,
+              color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
             ),
-            contentPadding: const EdgeInsets.all(20),
-            prefixIcon: Icon(
-              Icons.phone,
-              color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 40),
+          TextField(
+            controller: _emergencyContactController,
+            keyboardType: TextInputType.phone,
+            style: TextStyle(
+              fontSize: 20,
+              color: _isDarkMode ? Colors.white : Colors.black,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Número de teléfono',
+              hintStyle: TextStyle(
+                color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+              filled: true,
+              fillColor: _isDarkMode ? Colors.grey[800] : Colors.grey[100],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(20),
+              prefixIcon: Icon(
+                Icons.phone,
+                color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 100), // Espacio adicional para evitar que el teclado oculte el contenido
+        ],
+      ),
     );
   }
 
@@ -561,8 +568,6 @@ class _LauncherScreenState extends State<LauncherScreen> {
         'com.android.keychain',
         'com.android.providers',
         'com.android.server',
-        'com.google.android.gms',
-        'com.google.android.gsf',
         'com.google.android.setupwizard',
         'com.google.android.partnersetup',
         'com.google.android.configupdater',
@@ -572,8 +577,23 @@ class _LauncherScreenState extends State<LauncherScreen> {
         'com.google.android.onetimeinitializer',
         'com.google.android.ext.services',
         'com.google.android.webview',
-        'com.google.android.tts',
         'com.google.android.packageinstaller'
+      };
+      
+      // Lista de aplicaciones de Google esenciales que NO deben ser excluidas
+      Set<String> allowedGoogleApps = {
+        'com.google.android.contacts',
+        'com.google.android.dialer',
+        'com.google.android.apps.photos',
+        'com.google.android.GoogleCamera',
+        'com.google.android.apps.messaging',
+        'com.google.android.calendar',
+        'com.google.android.gm',
+        'com.google.android.youtube',
+        'com.google.android.apps.maps',
+        'com.google.android.music',
+        'com.google.android.apps.docs',
+        'com.google.android.keep'
       };
       
       // Filtrar aplicaciones válidas
@@ -585,21 +605,24 @@ class _LauncherScreenState extends State<LauncherScreen> {
         
         String packageName = app.packageName!;
         
+        // Permitir aplicaciones de Google esenciales explícitamente
+        if (allowedGoogleApps.contains(packageName)) {
+          return true;
+        }
+        
         // Excluir paquetes específicos del sistema
         if (systemPackagesToExclude.any((systemPkg) => packageName.startsWith(systemPkg))) {
           return false;
         }
         
-        // Excluir aplicaciones del sistema Android básico
-        if (packageName.startsWith('com.android.') && 
-            !packageName.contains('camera') && 
-            !packageName.contains('contacts') && 
-            !packageName.contains('dialer') && 
-            !packageName.contains('gallery')) {
+        // Excluir otros servicios de Google que no son aplicaciones de usuario
+        if (packageName.startsWith('com.google.android.gms') ||
+            packageName.startsWith('com.google.android.gsf') ||
+            packageName.startsWith('com.google.android.tts')) {
           return false;
         }
         
-        // Permitir aplicaciones de Google útiles
+        // Permitir todas las demás aplicaciones
         return true;
       }).toList();
       
