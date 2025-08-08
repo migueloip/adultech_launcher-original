@@ -4,6 +4,114 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+
+// Clase para validación de números telefónicos
+class PhoneValidator {
+  static final RegExp _phoneRegex = RegExp(r'^[+]?[0-9\s\-\(\)]{7,15}$');
+  
+  static bool isValidPhoneNumber(String phone) {
+    if (phone.trim().isEmpty) return false;
+    String cleanPhone = phone.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    return _phoneRegex.hasMatch(phone) && cleanPhone.length >= 7 && cleanPhone.length <= 15;
+  }
+  
+  static String formatPhoneNumber(String phone) {
+    return phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  }
+}
+
+// Clase para manejar contactos de emergencia
+class EmergencyContactsManager {
+  static const String _contactsKey = 'emergency_contacts';
+  static const String _primaryContactKey = 'emergency_contact';
+  
+  static Future<List<Map<String, String>>> getContacts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final contactsJson = prefs.getString(_contactsKey);
+      if (contactsJson != null) {
+        final List<dynamic> contactsList = json.decode(contactsJson);
+        return contactsList.map((contact) => Map<String, String>.from(contact)).toList();
+      }
+    } catch (e) {
+      print('Error loading emergency contacts: $e');
+    }
+    return [];
+  }
+  
+  static Future<bool> saveContacts(List<Map<String, String>> contacts) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final contactsJson = json.encode(contacts);
+      return await prefs.setString(_contactsKey, contactsJson);
+    } catch (e) {
+      print('Error saving emergency contacts: $e');
+      return false;
+    }
+  }
+  
+  static Future<bool> addContact(String name, String phone) async {
+    try {
+      final contacts = await getContacts();
+      contacts.add({
+        'name': name,
+        'phone': phone,
+        'description': 'Se llamará a este contacto al presionar el botón de emergencia.',
+      });
+      return await saveContacts(contacts);
+    } catch (e) {
+      print('Error adding emergency contact: $e');
+      return false;
+    }
+  }
+  
+  static Future<bool> removeContact(int index) async {
+    try {
+      final contacts = await getContacts();
+      if (index >= 0 && index < contacts.length) {
+        contacts.removeAt(index);
+        return await saveContacts(contacts);
+      }
+      return false;
+    } catch (e) {
+      print('Error removing emergency contact: $e');
+      return false;
+    }
+  }
+  
+  static Future<String> getPrimaryContact() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_primaryContactKey) ?? '';
+    } catch (e) {
+      print('Error getting primary contact: $e');
+      return '';
+    }
+  }
+}
+
+// Clase para optimizar el manejo de iconos
+class AppIconCache {
+  static final Map<String, Uint8List?> _iconCache = {};
+  
+  static Uint8List? getCachedIcon(String packageName) {
+    return _iconCache[packageName];
+  }
+  
+  static void cacheIcon(String packageName, Uint8List? icon) {
+    if (_iconCache.length > 100) {
+      // Limpiar caché si es muy grande
+      _iconCache.clear();
+    }
+    _iconCache[packageName] = icon;
+  }
+  
+  static void clearCache() {
+    _iconCache.clear();
+  }
+}
 
 void main() {
   runApp(const AdulTechLauncher());
@@ -419,28 +527,47 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   }
 
   Future<void> _completeSetup() async {
+    // Validación del nombre
     if (_nameController.text.trim().isEmpty) {
       _showErrorDialog('Por favor, ingresa tu nombre');
       return;
     }
     
+    if (_nameController.text.trim().length < 2) {
+      _showErrorDialog('El nombre debe tener al menos 2 caracteres');
+      return;
+    }
+    
+    // Validación del contacto de emergencia
     if (_emergencyContactController.text.trim().isEmpty) {
       _showErrorDialog('Por favor, ingresa un contacto de emergencia');
       return;
     }
+    
+    if (!PhoneValidator.isValidPhoneNumber(_emergencyContactController.text.trim())) {
+      _showErrorDialog('Por favor, ingresa un número de teléfono válido\n(7-15 dígitos, puede incluir +, espacios, guiones y paréntesis)');
+      return;
+    }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('initial_setup_completed', true);
-    await prefs.setBool('dark_mode', _isDarkMode);
-    await prefs.setDouble('font_size', _fontSize);
-    await prefs.setString('user_name', _nameController.text.trim());
-    await prefs.setString('emergency_contact', _emergencyContactController.text.trim());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final formattedPhone = PhoneValidator.formatPhoneNumber(_emergencyContactController.text.trim());
+      
+      await prefs.setBool('initial_setup_completed', true);
+      await prefs.setBool('dark_mode', _isDarkMode);
+      await prefs.setDouble('font_size', _fontSize);
+      await prefs.setString('user_name', _nameController.text.trim());
+      await prefs.setString('emergency_contact', formattedPhone);
 
-    if (mounted) {
-       Navigator.of(context).pushReplacement(
-         MaterialPageRoute(builder: (context) => const LauncherScreen()),
-       );
-     }
+      if (mounted) {
+         Navigator.of(context).pushReplacement(
+           MaterialPageRoute(builder: (context) => const LauncherScreen()),
+         );
+       }
+    } catch (e) {
+      print('Error completing setup: $e');
+      _showErrorDialog('Error al guardar la configuración. Por favor, inténtalo de nuevo.');
+    }
   }
 
   void _showErrorDialog(String message) {
@@ -541,7 +668,10 @@ class _LauncherScreenState extends State<LauncherScreen> {
   void initState() {
     super.initState();
     _loadUserPreferences();
-    _loadInstalledApps();
+    // Cargar aplicaciones después de que el widget esté construido
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadInstalledApps();
+    });
   }
 
   Future<void> _loadUserPreferences() async {
@@ -557,7 +687,23 @@ class _LauncherScreenState extends State<LauncherScreen> {
   Future<void> _loadInstalledApps() async {
     try {
       print('Cargando aplicaciones instaladas...');
+      
+      // Mostrar indicador de carga
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cargando aplicaciones...'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+      
       List<AppInfo> apps = await InstalledApps.getInstalledApps(true, true);
+      
+      if (apps.isEmpty) {
+        throw Exception('No se pudieron cargar las aplicaciones instaladas');
+      }
       
       // Lista de paquetes del sistema que queremos excluir
       Set<String> systemPackagesToExclude = {
@@ -598,8 +744,8 @@ class _LauncherScreenState extends State<LauncherScreen> {
       
       // Filtrar aplicaciones válidas
       List<AppInfo> validApps = apps.where((app) {
-        if (app.name == null || app.name!.isEmpty || 
-            app.packageName == null || app.packageName!.isEmpty) {
+        if ((app.name?.isEmpty ?? true) ||
+            (app.packageName?.isEmpty ?? true)) {
           return false;
         }
         
@@ -626,23 +772,54 @@ class _LauncherScreenState extends State<LauncherScreen> {
         return true;
       }).toList();
       
+      // Optimizar iconos usando caché
+      for (AppInfo app in validApps) {
+        if (app.packageName != null && app.icon != null) {
+          AppIconCache.cacheIcon(app.packageName!, app.icon);
+        }
+      }
+      
       // Ordenar alfabéticamente
       validApps.sort((a, b) => a.name!.toLowerCase().compareTo(b.name!.toLowerCase()));
       
-      setState(() {
-        _installedApps = validApps;
-      });
+      if (mounted) {
+        setState(() {
+          _installedApps = validApps;
+        });
+      }
       
       print('Se cargaron ${_installedApps.length} aplicaciones válidas');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_installedApps.length} aplicaciones cargadas exitosamente'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       print('Error loading installed apps: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al cargar aplicaciones: ${e.toString()}'),
-          duration: const Duration(seconds: 3),
-          backgroundColor: Colors.red,
-        ),
-      );
+      
+      if (mounted) {
+        setState(() {
+          _installedApps = [];
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar aplicaciones: ${e.toString()}\nPresiona el botón de recarga para intentar de nuevo'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _loadInstalledApps(),
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -1016,21 +1193,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
                 color: Colors.blue,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: app.icon != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.memory(
-                        app.icon!,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.android,
-                      color: Colors.white,
-                      size: 30,
-                    ),
+              child: _buildAppIcon(app),
             ),
             const SizedBox(height: 8),
             Text(
@@ -1047,6 +1210,53 @@ class _LauncherScreenState extends State<LauncherScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAppIcon(AppInfo app) {
+    // Usar caché de iconos si está disponible
+    if (app.packageName != null) {
+      final cachedIcon = AppIconCache.getCachedIcon(app.packageName!);
+      if (cachedIcon != null) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(
+            cachedIcon,
+            width: 50,
+            height: 50,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildDefaultIcon();
+            },
+          ),
+        );
+      }
+    }
+    
+    // Fallback al icono original
+    if (app.icon != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.memory(
+          app.icon!,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildDefaultIcon();
+          },
+        ),
+      );
+    }
+    
+    return _buildDefaultIcon();
+  }
+  
+  Widget _buildDefaultIcon() {
+    return const Icon(
+      Icons.android,
+      color: Colors.white,
+      size: 30,
     );
   }
 
@@ -1213,17 +1423,22 @@ class _LauncherScreenState extends State<LauncherScreen> {
       for (String packageName in packages) {
         try {
           print('Intentando abrir $appName con packageName: $packageName');
-          InstalledApps.startApp(packageName);
-          appLaunched = true;
+          bool? launchResult = await InstalledApps.startApp(packageName);
+          bool launched = launchResult ?? false;
           
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Abriendo $appName...'),
-              duration: const Duration(seconds: 2),
-              backgroundColor: Colors.green,
-            ),
-          );
-          break;
+          if (launched) {
+            appLaunched = true;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Abriendo $appName...'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.green,
+              ),
+            );
+            break;
+          } else {
+            print('$appName con $packageName no se pudo abrir (aplicación no encontrada)');
+          }
         } catch (e) {
           print('Error al intentar abrir $appName con $packageName: $e');
           continue;
@@ -1256,38 +1471,65 @@ class _LauncherScreenState extends State<LauncherScreen> {
     }
   }
 
-  void _launchInstalledApp(AppInfo app) {
+  Future<void> _launchInstalledApp(AppInfo app) async {
+    if (app.packageName?.isEmpty ?? true) {
+      _showErrorSnackBar('Error: Información de aplicación inválida');
+      return;
+    }
+    
     try {
-      // Verificar que el packageName no sea null o vacío
-      if (app.packageName == null || app.packageName!.isEmpty) {
+      print('Intentando abrir ${app.name} (${app.packageName})');
+      
+      // Mostrar indicador de carga
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: No se puede abrir ${app.name ?? 'la aplicación'} - Información de paquete no disponible'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red,
+            content: Text('Abriendo ${app.name ?? 'aplicación'}...'),
+            duration: const Duration(milliseconds: 800),
+            backgroundColor: Colors.blue,
           ),
         );
-        return;
       }
-
-      print('Intentando abrir aplicación: ${app.name} con packageName: ${app.packageName}');
       
-      InstalledApps.startApp(app.packageName!);
+      bool? launchResult = await InstalledApps.startApp(app.packageName!);
+      bool launched = launchResult ?? false;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Abriendo ${app.name ?? 'aplicación'}...'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (!launched) {
+        throw Exception('La aplicación no pudo iniciarse. Puede que no esté disponible o tenga permisos restringidos.');
+      }
+      
+      print('Aplicación ${app.name} abierta exitosamente');
+      
     } catch (e) {
-      print('Error al abrir aplicación ${app.name}: $e');
+      print('Error launching app ${app.name}: $e');
+      
+      String errorMessage;
+      if (e.toString().contains('not found') || e.toString().contains('not installed')) {
+        errorMessage = '${app.name ?? 'La aplicación'} no está instalada o no está disponible';
+      } else if (e.toString().contains('permission')) {
+        errorMessage = 'No tienes permisos para abrir ${app.name ?? 'esta aplicación'}';
+      } else {
+        errorMessage = 'Error al abrir ${app.name ?? 'la aplicación'}: ${e.toString()}';
+      }
+      
+      _showErrorSnackBar(errorMessage);
+    }
+  }
+  
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al abrir ${app.name ?? 'la aplicación'}: ${e.toString()}'),
-          duration: const Duration(seconds: 3),
+          content: Text(message),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     }
@@ -1491,90 +1733,250 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
       appBar: AppBar(
           backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+          elevation: 0,
           leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: _isDarkMode ? Colors.white : Colors.black),
+            icon: Icon(Icons.arrow_back, color: _isDarkMode ? Colors.white : Colors.black, size: 28),
             onPressed: () => Navigator.pop(context),
           ),
           title: Text(
-            'Ajustes',
-            style: TextStyle(color: _isDarkMode ? Colors.white : Colors.black, fontSize: _fontSize * 1.25),
+            'Configuración',
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white : Colors.black, 
+              fontSize: _fontSize * 1.3,
+              fontWeight: FontWeight.bold,
+            ),
           ),
+          centerTitle: true,
         ),
       body: SafeArea(
-        child: Column(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
           children: [
-            const SizedBox(height: 20),
-            const SizedBox(height: 10),
-            // Settings Content
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(20),
+            // Header con información del usuario
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [const Color(0xFF6A4C93), const Color(0xFF8E44AD)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    'Accesibilidad',
-                    style: TextStyle(
-                      color: _isDarkMode ? Colors.white : Colors.black,
-                      fontSize: _fontSize * 1.5,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(30),
                     ),
+                    child: Icon(Icons.person, color: Colors.white, size: 30),
                   ),
-                  const SizedBox(height: 20),
-                  _buildSettingsTile(
-                    'Lector de pantalla',
-                    'Objeto, texto o botón será leído en voz alta al... leer más',
-                    Icons.visibility,
-                    false,
-                    () {},
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSettingsTile(
-                    'Ajustar Texto',
-                    'Cambia el tamaño del texto.',
-                    Icons.text_fields,
-                    null,
-                    () => _showTextSizeDialog(),
-                  ),
-                  const SizedBox(height: 30),
-                  Text(
-                    'Configurar launcher',
-                    style: TextStyle(
-                      color: _isDarkMode ? Colors.white : Colors.black,
-                      fontSize: _fontSize * 1.5,
-                      fontWeight: FontWeight.bold,
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AdulTech Launcher',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: _fontSize * 1.1,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Personaliza tu experiencia',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: _fontSize * 0.9,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSettingsTile(
-                    'Contactos de emergencia',
-                    'Agrega un contacto para llamar con el botón del inicio.',
-                    Icons.emergency,
-                    null,
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => EmergencyContactsScreen(fontSize: _fontSize, isDarkMode: _isDarkMode)),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSettingsTile(
-                    'Alternar modo 🌟',
-                    'Cambia entre modo claro o oscuro esto cambia... leer más',
-                    Icons.brightness_6,
-                    null,
-                    () => _toggleDarkMode(),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSettingsTile(
-                    'Conectar familiar',
-                    'Ajusta al familiar que podrá conectarse a... leer más',
-                    Icons.family_restroom,
-                    null,
-                    () {},
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 30),
+            
+            // Sección Accesibilidad
+            _buildSectionHeader('Accesibilidad', Icons.accessibility),
+            const SizedBox(height: 15),
+            _buildSettingsTile(
+              'Tamaño de texto',
+              'Ajusta el tamaño del texto para mejor lectura',
+              Icons.text_fields,
+              null,
+              () => _showTextSizeDialog(),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Modo oscuro',
+              'Cambia entre tema claro y oscuro',
+              Icons.dark_mode,
+              null,
+              () => _toggleDarkMode(),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Lector de pantalla',
+              'Activa la lectura en voz alta de elementos',
+              Icons.record_voice_over,
+              false,
+              () => _showComingSoonDialog('Lector de pantalla'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Alto contraste',
+              'Mejora la visibilidad con colores más definidos',
+              Icons.contrast,
+              false,
+              () => _showComingSoonDialog('Alto contraste'),
+            ),
+            const SizedBox(height: 30),
+            
+            // Sección Seguridad y Emergencias
+            _buildSectionHeader('Seguridad y Emergencias', Icons.security),
+            const SizedBox(height: 15),
+            _buildSettingsTile(
+              'Contactos de emergencia',
+              'Configura contactos para llamadas de emergencia',
+              Icons.emergency,
+              null,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => EmergencyContactsScreen(fontSize: _fontSize, isDarkMode: _isDarkMode)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Botón de pánico',
+              'Configura acción rápida para emergencias',
+              Icons.warning,
+              false,
+              () => _showComingSoonDialog('Botón de pánico'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Ubicación de emergencia',
+              'Comparte tu ubicación en caso de emergencia',
+              Icons.location_on,
+              false,
+              () => _showComingSoonDialog('Ubicación de emergencia'),
+            ),
+            const SizedBox(height: 30),
+            
+            // Sección Personalización
+            _buildSectionHeader('Personalización', Icons.palette),
+            const SizedBox(height: 15),
+            _buildSettingsTile(
+              'Aplicaciones favoritas',
+              'Selecciona qué aplicaciones mostrar en inicio',
+              Icons.favorite,
+              null,
+              () => _showComingSoonDialog('Aplicaciones favoritas'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Fondo de pantalla',
+              'Cambia la imagen de fondo del launcher',
+              Icons.wallpaper,
+              null,
+              () => _showComingSoonDialog('Fondo de pantalla'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Sonidos y vibraciones',
+              'Configura alertas sonoras y táctiles',
+              Icons.volume_up,
+              null,
+              () => _showComingSoonDialog('Sonidos y vibraciones'),
+            ),
+            const SizedBox(height: 30),
+            
+            // Sección Conectividad
+            _buildSectionHeader('Conectividad', Icons.wifi),
+            const SizedBox(height: 15),
+            _buildSettingsTile(
+              'Conectar con familiar',
+              'Permite que un familiar te ayude remotamente',
+              Icons.family_restroom,
+              null,
+              () => _showComingSoonDialog('Conectar con familiar'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Notificaciones',
+              'Configura qué notificaciones recibir',
+              Icons.notifications,
+              null,
+              () => _showComingSoonDialog('Notificaciones'),
+            ),
+            const SizedBox(height: 30),
+            
+            // Sección Información
+            _buildSectionHeader('Información', Icons.info),
+            const SizedBox(height: 15),
+            _buildSettingsTile(
+              'Acerca de AdulTech',
+              'Información sobre la aplicación y versión',
+              Icons.info_outline,
+              null,
+              () => _showAboutDialog(),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Tutorial',
+              'Aprende a usar todas las funciones',
+              Icons.school,
+              null,
+              () => _showComingSoonDialog('Tutorial'),
+            ),
+            const SizedBox(height: 12),
+            _buildSettingsTile(
+              'Ayuda y soporte',
+              'Obtén ayuda para usar la aplicación',
+              Icons.help,
+              null,
+              () => _showComingSoonDialog('Ayuda y soporte'),
+            ),
+            const SizedBox(height: 40),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6A4C93).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF6A4C93),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white : Colors.black,
+              fontSize: _fontSize * 1.2,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1583,24 +1985,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        margin: const EdgeInsets.only(bottom: 2),
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: _isDarkMode ? Colors.grey[850] : Colors.grey[200],
+          color: _isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
           borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: _isDarkMode ? const Color(0xFF3A3A3A) : Colors.grey[200]!,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (_isDarkMode ? Colors.black : Colors.grey).withOpacity(0.1),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 50,
-              height: 50,
+              width: 45,
+              height: 45,
               decoration: BoxDecoration(
-                color: _isDarkMode ? Colors.grey[700] : Colors.grey[400],
-                borderRadius: BorderRadius.circular(10),
+                gradient: LinearGradient(
+                  colors: [const Color(0xFF6A4C93).withOpacity(0.2), const Color(0xFF8E44AD).withOpacity(0.2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: Colors.white,
-                size: 28,
+                color: const Color(0xFF6A4C93),
+                size: 22,
               ),
             ),
             const SizedBox(width: 15),
@@ -1612,16 +2030,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title,
                     style: TextStyle(
                       color: _isDarkMode ? Colors.white : Colors.black,
-                      fontSize: _fontSize,
-                      fontWeight: FontWeight.bold,
+                      fontSize: _fontSize * 1.0,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
                     description,
                     style: TextStyle(
                       color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: _fontSize * 0.875,
+                      fontSize: _fontSize * 0.85,
+                      height: 1.2,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -1631,39 +2050,214 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             if (hasSwitch != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: hasSwitch ? const Color(0xFF6A4C93) : Colors.grey[600],
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  hasSwitch ? 'Activar' : 'Desactivar',
+                  hasSwitch ? 'ON' : 'OFF',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               )
             else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6A4C93),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Text(
-                  'Acceder',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                size: 16,
               ),
           ],
         ),
       ),
+    );
+  }
+
+  void _showComingSoonDialog(String feature) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6A4C93).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.construction,
+                  color: const Color(0xFF6A4C93),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Próximamente',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white : Colors.black,
+                    fontSize: _fontSize * 1.1,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'La función "$feature" estará disponible en una próxima actualización. ¡Mantente atento!',
+            style: TextStyle(
+              color: _isDarkMode ? Colors.grey[300] : Colors.grey[700],
+              fontSize: _fontSize * 0.9,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF6A4C93),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                'Entendido',
+                style: TextStyle(
+                  fontSize: _fontSize * 0.9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: _isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF6A4C93), const Color(0xFF8E44AD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.info,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'AdulTech Launcher',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white : Colors.black,
+                    fontSize: _fontSize * 1.1,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Versión 1.0.0',
+                style: TextStyle(
+                  color: _isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                  fontSize: _fontSize * 0.9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Un launcher diseñado especialmente para adultos mayores, con interfaz simple, texto grande y funciones de emergencia.',
+                style: TextStyle(
+                  color: _isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                  fontSize: _fontSize * 0.9,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6A4C93).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.favorite,
+                      color: const Color(0xFF6A4C93),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Desarrollado con ❤️ para facilitar el uso de la tecnología',
+                        style: TextStyle(
+                          color: const Color(0xFF6A4C93),
+                          fontSize: _fontSize * 0.85,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF6A4C93),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                'Cerrar',
+                style: TextStyle(
+                  fontSize: _fontSize * 0.9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1797,17 +2391,37 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   late bool _isDarkMode;
   late double _fontSize;
   
-  final List<Map<String, String>> _contacts = [
-    {'name': 'Familiar', 'phone': '+56 9 1234 5678', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-    {'name': 'Familiar', 'phone': '+56 9 5679 1234', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-    {'name': 'Familiar', 'phone': '+56 9 3456 1278', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-  ];
-
+  List<Map<String, String>> _contacts = [];
+  
   @override
   void initState() {
     super.initState();
     _isDarkMode = widget.isDarkMode;
     _fontSize = widget.fontSize;
+    _loadContacts();
+  }
+  
+  Future<void> _loadContacts() async {
+    try {
+      List<Map<String, String>> savedContacts = await EmergencyContactsManager.getContacts();
+      setState(() {
+        _contacts = savedContacts.map((contact) => {
+          'name': contact['name'] ?? '',
+          'phone': contact['phone'] ?? '',
+          'description': 'Se llamará a este familiar al presionar el botón del inicio.',
+        }).toList();
+      });
+    } catch (e) {
+      print('Error loading contacts: $e');
+      // Si no hay contactos guardados, usar contactos por defecto
+      setState(() {
+        _contacts = [
+          {'name': 'Familiar', 'phone': '+56 9 1234 5678', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
+          {'name': 'Familiar', 'phone': '+56 9 5679 1234', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
+          {'name': 'Familiar', 'phone': '+56 9 3456 1278', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
+        ];
+      });
+    }
   }
 
   @override
@@ -2051,15 +2665,59 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
     );
   }
 
-  void _addContact() {
-    if (_nameController.text.isNotEmpty && _phoneController.text.isNotEmpty) {
+  Future<void> _addContact() async {
+    String name = _nameController.text.trim();
+    String phone = _phoneController.text.trim();
+    
+    // Validaciones
+    if (name.isEmpty) {
+      _showErrorMessage('Por favor, ingresa un nombre');
+      return;
+    }
+    
+    if (name.length < 2) {
+      _showErrorMessage('El nombre debe tener al menos 2 caracteres');
+      return;
+    }
+    
+    if (phone.isEmpty) {
+      _showErrorMessage('Por favor, ingresa un número de teléfono');
+      return;
+    }
+    
+    if (!PhoneValidator.isValidPhoneNumber(phone)) {
+      _showErrorMessage('Por favor, ingresa un número de teléfono válido\n(7-15 dígitos, puede incluir +, espacios, guiones y paréntesis)');
+      return;
+    }
+    
+    try {
+      String formattedPhone = PhoneValidator.formatPhoneNumber(phone);
+      
+      // Verificar si el contacto ya existe
+      List<Map<String, String>> existingContacts = await EmergencyContactsManager.getContacts();
+      bool contactExists = existingContacts.any((contact) => 
+        contact['name']?.toLowerCase() == name.toLowerCase() || 
+        contact['phone'] == formattedPhone
+      );
+      
+      if (contactExists) {
+        _showErrorMessage('Ya existe un contacto con ese nombre o número de teléfono');
+        return;
+      }
+      
+      // Agregar el contacto
+      await EmergencyContactsManager.addContact(name, formattedPhone);
+      
+      // Actualizar la lista local
+      List<Map<String, String>> updatedContacts = await EmergencyContactsManager.getContacts();
       setState(() {
-        _contacts.add({
-          'name': _nameController.text,
-          'phone': _phoneController.text,
+        _contacts = updatedContacts.map((contact) => {
+          'name': contact['name'] ?? '',
+          'phone': contact['phone'] ?? '',
           'description': 'Se llamará a este familiar al presionar el botón del inicio.',
-        });
+        }).toList();
       });
+      
       _nameController.clear();
       _phoneController.clear();
       
@@ -2067,16 +2725,30 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         const SnackBar(
           content: Text('Contacto agregado exitosamente'),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
         ),
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor complete todos los campos'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    } catch (e) {
+      print('Error adding contact: $e');
+      _showErrorMessage('Error al agregar el contacto. Por favor, inténtalo de nuevo.');
     }
+  }
+  
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
   }
 
   @override
