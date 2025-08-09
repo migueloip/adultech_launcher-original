@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -684,6 +685,72 @@ class _LauncherScreenState extends State<LauncherScreen> {
     });
   }
 
+  Future<void> _addMissingEssentialApps(List<AppInfo> validApps, List<AppInfo> allInstalledApps) async {
+    // Lista de aplicaciones esenciales que queremos mostrar siempre
+    final essentialPackages = [
+      'com.google.android.youtube',
+      'com.google.android.gm',
+      'com.android.vending',
+      'com.android.chrome',
+      'com.google.android.apps.maps',
+    ];
+
+    for (String packageName in essentialPackages) {
+      // Verificar si la aplicación ya está en la lista válida
+      bool alreadyExists = validApps.any((app) => app.packageName == packageName);
+      print('DEBUG: Verificando $packageName - Ya existe en validApps: $alreadyExists');
+      
+      if (!alreadyExists) {
+        // Buscar la aplicación en la lista completa de aplicaciones instaladas
+        AppInfo? installedApp;
+        try {
+           installedApp = allInstalledApps.firstWhere(
+             (app) => app.packageName == packageName,
+           );
+           print('DEBUG: Encontrada aplicación instalada: ${installedApp.name} (${installedApp.packageName})');
+          // La aplicación está instalada, agregarla con su icono original
+          print('DEBUG: Agregando aplicación esencial instalada: ${installedApp.name} con icono original');
+          validApps.add(installedApp);
+        } catch (e) {
+          // La aplicación no está instalada, crear una entrada manual
+          String appName = _getEssentialAppName(packageName);
+          print('DEBUG: Agregando aplicación esencial no instalada: $appName');
+          
+          AppInfo manualApp = AppInfo(
+            name: appName,
+            packageName: packageName,
+            icon: null, // Sin icono para apps no instaladas
+            versionName: '1.0',
+            versionCode: 1,
+            builtWith: BuiltWith.flutter,
+            installedTimestamp: DateTime.now().millisecondsSinceEpoch,
+          );
+          
+          validApps.add(manualApp);
+        }
+      } else {
+        print('DEBUG: Aplicación esencial $packageName ya existe en la lista');
+      }
+    }
+  }
+  
+  String _getEssentialAppName(String packageName) {
+    switch (packageName) {
+      case 'com.google.android.youtube':
+        return 'YouTube';
+      case 'com.google.android.gm':
+        return 'Gmail';
+      case 'com.android.vending':
+        return 'Play Store';
+      case 'com.android.chrome':
+        return 'Google Chrome';
+      case 'com.google.android.apps.maps':
+        return 'Google Maps';
+      default:
+        return 'App';
+    }
+  }
+
   Future<void> _loadInstalledApps() async {
     try {
       print('Cargando aplicaciones instaladas...');
@@ -704,6 +771,33 @@ class _LauncherScreenState extends State<LauncherScreen> {
       if (apps.isEmpty) {
         throw Exception('No se pudieron cargar las aplicaciones instaladas');
       }
+      
+      print('=== ANÁLISIS DETALLADO DE APLICACIONES ===');
+      print('Total de aplicaciones detectadas: ${apps.length}');
+      
+      // Buscar específicamente YouTube y Gmail en TODAS las aplicaciones
+      for (AppInfo app in apps) {
+        if (app.packageName != null && app.name != null) {
+          String packageName = app.packageName!.toLowerCase();
+          String appName = app.name!.toLowerCase();
+          
+          // Detectar YouTube
+          if (packageName.contains('youtube') || appName.contains('youtube')) {
+            print('🔍 YOUTUBE ENCONTRADO: "${app.name}" - ${app.packageName}');
+          }
+          
+          // Detectar Gmail
+          if (packageName.contains('gmail') || packageName.contains('mail') || appName.contains('gmail') || appName.contains('mail')) {
+            print('📧 GMAIL/MAIL ENCONTRADO: "${app.name}" - ${app.packageName}');
+          }
+          
+          // Detectar Play Store
+          if (packageName.contains('vending') || packageName.contains('play') || appName.contains('play') || appName.contains('store')) {
+            print('🏪 PLAY STORE ENCONTRADO: "${app.name}" - ${app.packageName}');
+          }
+        }
+      }
+      print('=== FIN ANÁLISIS DETALLADO ===');
       
       // Lista de paquetes del sistema que queremos excluir
       Set<String> systemPackagesToExclude = {
@@ -730,16 +824,36 @@ class _LauncherScreenState extends State<LauncherScreen> {
       Set<String> allowedGoogleApps = {
         'com.google.android.contacts',
         'com.google.android.dialer',
-        'com.google.android.apps.photos',
+        'com.google.android.apps.photos', // Google Fotos
         'com.google.android.GoogleCamera',
         'com.google.android.apps.messaging',
         'com.google.android.calendar',
-        'com.google.android.gm',
-        'com.google.android.youtube',
+        'com.google.android.gm', // Gmail
+        'com.google.android.youtube', // YouTube
         'com.google.android.apps.maps',
         'com.google.android.music',
-        'com.google.android.apps.docs',
-        'com.google.android.keep'
+        'com.google.android.apps.docs', // Drive (ya aparece en logs)
+        'com.google.android.keep',
+        'com.android.vending', // Google Play Store
+        'com.google.android.apps.gmail', // Gmail alternativo
+        'com.google.android.apps.photos.vrmode', // Google Fotos VR
+        'com.google.android.apps.youtube.music', // YouTube Music (ya aparece)
+        'com.google.android.apps.bard', // Gemini
+        'com.google.android.apps.magazines', // Google Noticias
+        'com.google.android.apps.podcasts', // Google Podcasts
+        'com.google.android.videos', // Google TV
+        'com.google.android.apps.docs.editors.slides', // Diapositivas
+        'com.google.android.apps.docs.editors.docs', // Documentos
+        'com.google.android.apps.docs.editors.sheets' // Hojas de cálculo
+      };
+      
+      // Lista de aplicaciones esenciales que siempre deben aparecer
+      Set<String> essentialApps = {
+        'com.google.android.youtube',
+        'com.google.android.gm',
+        'com.android.vending',
+        'com.android.chrome',
+        'com.google.android.apps.maps',
       };
       
       // Filtrar aplicaciones válidas
@@ -751,13 +865,45 @@ class _LauncherScreenState extends State<LauncherScreen> {
         
         String packageName = app.packageName!;
         
+        // Las aplicaciones esenciales siempre pasan el filtro
+        if (essentialApps.contains(packageName)) {
+          print('✅ APLICACIÓN ESENCIAL DETECTADA: ${app.name} - $packageName');
+          return true;
+        }
+        
+        // Debug: Imprimir aplicaciones de Google para diagnóstico
+        if (packageName.contains('google') && packageName.contains('android')) {
+          print('Aplicación Google encontrada: ${app.name} - $packageName');
+        }
+        
+        // Log detallado para YouTube y Gmail específicamente
+        String appNameLower = (app.name ?? '').toLowerCase();
+        bool isYouTube = packageName.contains('youtube') || appNameLower.contains('youtube');
+        bool isGmail = packageName.contains('gmail') || packageName.contains('mail') || appNameLower.contains('gmail') || appNameLower.contains('mail');
+        bool isPlayStore = packageName.contains('vending') || packageName.contains('play') || appNameLower.contains('play') || appNameLower.contains('store');
+        
+        if (isYouTube || isGmail || isPlayStore) {
+          print('\n🔍 PROCESANDO APLICACIÓN OBJETIVO: "${app.name}" - $packageName');
+        }
+        
         // Permitir aplicaciones de Google esenciales explícitamente
         if (allowedGoogleApps.contains(packageName)) {
+          if (isYouTube || isGmail || isPlayStore) {
+            print('✅ PERMITIDA EXPLÍCITAMENTE: ${app.name} - $packageName');
+          }
           return true;
+        }
+        
+        if (isYouTube || isGmail || isPlayStore) {
+          print('⚠️  NO está en allowedGoogleApps: $packageName');
+          print('   allowedGoogleApps contiene: ${allowedGoogleApps.where((pkg) => pkg.contains('youtube') || pkg.contains('gmail') || pkg.contains('mail') || pkg.contains('vending')).toList()}');
         }
         
         // Excluir paquetes específicos del sistema
         if (systemPackagesToExclude.any((systemPkg) => packageName.startsWith(systemPkg))) {
+          if (isYouTube || isGmail || isPlayStore) {
+            print('❌ EXCLUIDA por systemPackagesToExclude: $packageName');
+          }
           return false;
         }
         
@@ -765,7 +911,14 @@ class _LauncherScreenState extends State<LauncherScreen> {
         if (packageName.startsWith('com.google.android.gms') ||
             packageName.startsWith('com.google.android.gsf') ||
             packageName.startsWith('com.google.android.tts')) {
+          if (isYouTube || isGmail || isPlayStore) {
+            print('❌ EXCLUIDA por filtros de servicios Google: $packageName');
+          }
           return false;
+        }
+        
+        if (isYouTube || isGmail || isPlayStore) {
+          print('✅ PASÓ TODOS LOS FILTROS: ${app.name} - $packageName');
         }
         
         // Permitir todas las demás aplicaciones
@@ -779,6 +932,9 @@ class _LauncherScreenState extends State<LauncherScreen> {
         }
       }
       
+      // Agregar aplicaciones manuales para YouTube, Gmail y Play Store si no están instaladas o no han sido detectadas
+      await _addMissingEssentialApps(validApps, apps);
+      
       // Ordenar alfabéticamente
       validApps.sort((a, b) => a.name!.toLowerCase().compareTo(b.name!.toLowerCase()));
       
@@ -789,6 +945,20 @@ class _LauncherScreenState extends State<LauncherScreen> {
       }
       
       print('Se cargaron ${_installedApps.length} aplicaciones válidas');
+      
+      // Debug: Verificar si las aplicaciones específicas están en la lista
+      List<String> targetApps = ['youtube', 'gmail', 'play store', 'google photos', 'fotos'];
+      for (String target in targetApps) {
+        var found = _installedApps.where((app) => 
+          app.name?.toLowerCase().contains(target) == true ||
+          app.packageName?.toLowerCase().contains(target.replaceAll(' ', '')) == true
+        ).toList();
+        if (found.isNotEmpty) {
+          print('Encontradas aplicaciones para "$target": ${found.map((app) => '${app.name} (${app.packageName})').join(', ')}');
+        } else {
+          print('NO se encontraron aplicaciones para "$target"');
+        }
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1035,30 +1205,6 @@ class _LauncherScreenState extends State<LauncherScreen> {
             ],
           ),
           const SizedBox(height: 30),
-          // Voice Assistant Button
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6A4C93),
-              borderRadius: BorderRadius.circular(25),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.mic, color: Colors.white, size: 24),
-                SizedBox(width: 10),
-                Text(
-                  'IA',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: _fontSize * 1.125,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 20),
         ],
       ),
@@ -1471,6 +1617,150 @@ class _LauncherScreenState extends State<LauncherScreen> {
     }
   }
 
+  bool _isManualApp(AppInfo app) {
+    // Verificar si es una de las aplicaciones esenciales que agregamos manualmente
+    final essentialPackages = [
+      'com.google.android.youtube',
+      'com.google.android.gm',
+      'com.android.vending',
+      'com.android.chrome',
+      'com.google.android.apps.maps',
+    ];
+    return essentialPackages.contains(app.packageName);
+  }
+
+  Future<void> _handleManualAppLaunch(AppInfo app) async {
+    print('Manejando lanzamiento de aplicación esencial: ${app.name}');
+    
+    try {
+      // Primero intentar abrir la aplicación directamente
+      print('Intentando abrir ${app.name} directamente...');
+      
+      // Obtener todas las aplicaciones instaladas para verificar si existe
+      List<AppInfo> allApps = await InstalledApps.getInstalledApps(true, true);
+      AppInfo? installedApp = allApps.firstWhere(
+        (installedApp) => installedApp.packageName == app.packageName,
+        orElse: () => app, // Si no se encuentra, usar la app manual
+      );
+      
+      // Intentar abrir la aplicación
+      bool? launchResult = await InstalledApps.startApp(app.packageName!);
+      bool launched = launchResult ?? false;
+      
+      if (launched) {
+        print('${app.name} abierta exitosamente');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Abriendo ${app.name}...'),
+              duration: const Duration(seconds: 1),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Si no se pudo abrir, mostrar mensaje y abrir Play Store
+      print('${app.name} no está instalada o no se pudo abrir');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${app.name} no está instalada. Abriendo Play Store para instalarla...'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      
+      // Intentar abrir Play Store con el paquete específico
+      await _openPlayStoreForApp(app.packageName!);
+      
+    } catch (e) {
+      print('Error al manejar aplicación esencial ${app.name}: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${app.name} no está disponible. Instálala desde Play Store.'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openPlayStore(String packageName) async {
+    try {
+      // Intentar abrir Play Store directamente
+      bool? playStoreOpened = await InstalledApps.startApp('com.android.vending');
+      
+      if (playStoreOpened == true) {
+        print('Play Store abierto exitosamente');
+        return;
+      }
+      
+      // Si Play Store no se abre, intentar con otros nombres de paquete
+      List<String> playStorePackages = [
+        'com.google.android.finsky',
+        'com.android.vending',
+      ];
+      
+      for (String pkg in playStorePackages) {
+        try {
+          bool? opened = await InstalledApps.startApp(pkg);
+          if (opened == true) {
+            print('Play Store abierto con paquete: $pkg');
+            return;
+          }
+        } catch (e) {
+          print('No se pudo abrir Play Store con paquete $pkg: $e');
+        }
+      }
+      
+      throw Exception('No se pudo abrir Play Store');
+      
+    } catch (e) {
+      print('Error al abrir Play Store: $e');
+      throw e;
+    }
+  }
+
+  Future<void> _openPlayStoreForApp(String packageName) async {
+    try {
+      // Intentar abrir Play Store con URL específica de la aplicación
+      String playStoreUrl = 'https://play.google.com/store/apps/details?id=$packageName';
+      final Uri uri = Uri.parse(playStoreUrl);
+      
+      print('Intentando abrir Play Store para $packageName');
+      
+      // Primero intentar abrir con URL específica
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        print('Play Store abierto con URL específica para $packageName');
+        return;
+      }
+      
+      // Si no funciona la URL, abrir Play Store normalmente
+      await _openPlayStore(packageName);
+      
+    } catch (e) {
+      print('Error al abrir Play Store para $packageName: $e');
+      // Como último recurso, intentar abrir Play Store sin URL específica
+      try {
+        await _openPlayStore(packageName);
+      } catch (e2) {
+        print('Error final al abrir Play Store: $e2');
+        throw e2;
+      }
+    }
+  }
+
   Future<void> _launchInstalledApp(AppInfo app) async {
     if (app.packageName?.isEmpty ?? true) {
       _showErrorSnackBar('Error: Información de aplicación inválida');
@@ -1495,6 +1785,11 @@ class _LauncherScreenState extends State<LauncherScreen> {
       bool launched = launchResult ?? false;
       
       if (!launched) {
+        // Si es una aplicación manual (agregada por nosotros), intentar alternativas
+        if (_isManualApp(app)) {
+          await _handleManualAppLaunch(app);
+          return;
+        }
         throw Exception('La aplicación no pudo iniciarse. Puede que no esté disponible o tenga permisos restringidos.');
       }
       
@@ -1502,6 +1797,12 @@ class _LauncherScreenState extends State<LauncherScreen> {
       
     } catch (e) {
       print('Error launching app ${app.name}: $e');
+      
+      // Si es una aplicación manual, intentar alternativas
+      if (_isManualApp(app)) {
+        await _handleManualAppLaunch(app);
+        return;
+      }
       
       String errorMessage;
       if (e.toString().contains('not found') || e.toString().contains('not installed')) {
@@ -1802,8 +2103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 30),
             
-            // Sección Accesibilidad
-            _buildSectionHeader('Accesibilidad', Icons.accessibility),
+            // Sección Configuración
+            _buildSectionHeader('Configuración', Icons.settings),
             const SizedBox(height: 15),
             _buildSettingsTile(
               'Tamaño de texto',
@@ -1823,27 +2124,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 12),
             _buildSettingsTile(
               'Lector de pantalla',
-              'Activa la lectura en voz alta de elementos',
+              'Abre configuración de accesibilidad para activar TalkBack',
               Icons.record_voice_over,
               false,
-              () => _showComingSoonDialog('Lector de pantalla'),
+              () => _openAccessibilitySettings(),
             ),
             const SizedBox(height: 12),
             _buildSettingsTile(
-              'Alto contraste',
-              'Mejora la visibilidad con colores más definidos',
-              Icons.contrast,
-              false,
-              () => _showComingSoonDialog('Alto contraste'),
-            ),
-            const SizedBox(height: 30),
-            
-            // Sección Seguridad y Emergencias
-            _buildSectionHeader('Seguridad y Emergencias', Icons.security),
-            const SizedBox(height: 15),
-            _buildSettingsTile(
-              'Contactos de emergencia',
-              'Configura contactos para llamadas de emergencia',
+              'Número de emergencia',
+              'Configura número para llamadas de emergencia',
               Icons.emergency,
               null,
               () => Navigator.push(
@@ -1853,95 +2142,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             _buildSettingsTile(
-              'Botón de pánico',
-              'Configura acción rápida para emergencias',
-              Icons.warning,
-              false,
-              () => _showComingSoonDialog('Botón de pánico'),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Ubicación de emergencia',
-              'Comparte tu ubicación en caso de emergencia',
-              Icons.location_on,
-              false,
-              () => _showComingSoonDialog('Ubicación de emergencia'),
-            ),
-            const SizedBox(height: 30),
-            
-            // Sección Personalización
-            _buildSectionHeader('Personalización', Icons.palette),
-            const SizedBox(height: 15),
-            _buildSettingsTile(
-              'Aplicaciones favoritas',
-              'Selecciona qué aplicaciones mostrar en inicio',
-              Icons.favorite,
-              null,
-              () => _showComingSoonDialog('Aplicaciones favoritas'),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Fondo de pantalla',
-              'Cambia la imagen de fondo del launcher',
-              Icons.wallpaper,
-              null,
-              () => _showComingSoonDialog('Fondo de pantalla'),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Sonidos y vibraciones',
-              'Configura alertas sonoras y táctiles',
-              Icons.volume_up,
-              null,
-              () => _showComingSoonDialog('Sonidos y vibraciones'),
-            ),
-            const SizedBox(height: 30),
-            
-            // Sección Conectividad
-            _buildSectionHeader('Conectividad', Icons.wifi),
-            const SizedBox(height: 15),
-            _buildSettingsTile(
-              'Conectar con familiar',
-              'Permite que un familiar te ayude remotamente',
-              Icons.family_restroom,
-              null,
-              () => _showComingSoonDialog('Conectar con familiar'),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Notificaciones',
-              'Configura qué notificaciones recibir',
-              Icons.notifications,
-              null,
-              () => _showComingSoonDialog('Notificaciones'),
-            ),
-            const SizedBox(height: 30),
-            
-            // Sección Información
-            _buildSectionHeader('Información', Icons.info),
-            const SizedBox(height: 15),
-            _buildSettingsTile(
               'Acerca de AdulTech',
               'Información sobre la aplicación y versión',
               Icons.info_outline,
               null,
               () => _showAboutDialog(),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Tutorial',
-              'Aprende a usar todas las funciones',
-              Icons.school,
-              null,
-              () => _showComingSoonDialog('Tutorial'),
-            ),
-            const SizedBox(height: 12),
-            _buildSettingsTile(
-              'Ayuda y soporte',
-              'Obtén ayuda para usar la aplicación',
-              Icons.help,
-              null,
-              () => _showComingSoonDialog('Ayuda y soporte'),
             ),
             const SizedBox(height: 40),
           ],
@@ -2373,6 +2578,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Personalizado';
     }
   }
+
+  Future<void> _openAccessibilitySettings() async {
+    try {
+      const AndroidIntent intent = AndroidIntent(
+        action: 'android.settings.ACCESSIBILITY_SETTINGS',
+      );
+      await intent.launch();
+    } catch (e) {
+      print('Error al abrir configuración de accesibilidad: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo abrir la configuración de accesibilidad'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 }
 
 class EmergencyContactsScreen extends StatefulWidget {
@@ -2386,41 +2610,29 @@ class EmergencyContactsScreen extends StatefulWidget {
 }
 
 class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
-  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   late bool _isDarkMode;
   late double _fontSize;
   
-  List<Map<String, String>> _contacts = [];
+  String _emergencyNumber = '';
   
   @override
   void initState() {
     super.initState();
     _isDarkMode = widget.isDarkMode;
     _fontSize = widget.fontSize;
-    _loadContacts();
+    _loadEmergencyNumber();
   }
   
-  Future<void> _loadContacts() async {
+  Future<void> _loadEmergencyNumber() async {
     try {
-      List<Map<String, String>> savedContacts = await EmergencyContactsManager.getContacts();
+      final prefs = await SharedPreferences.getInstance();
       setState(() {
-        _contacts = savedContacts.map((contact) => {
-          'name': contact['name'] ?? '',
-          'phone': contact['phone'] ?? '',
-          'description': 'Se llamará a este familiar al presionar el botón del inicio.',
-        }).toList();
+        _emergencyNumber = prefs.getString('emergency_contact') ?? '';
+        _phoneController.text = _emergencyNumber;
       });
     } catch (e) {
-      print('Error loading contacts: $e');
-      // Si no hay contactos guardados, usar contactos por defecto
-      setState(() {
-        _contacts = [
-          {'name': 'Familiar', 'phone': '+56 9 1234 5678', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-          {'name': 'Familiar', 'phone': '+56 9 5679 1234', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-          {'name': 'Familiar', 'phone': '+56 9 3456 1278', 'description': 'Se llamará a este familiar al presionar el botón del inicio.'},
-        ];
-      });
+      print('Error loading emergency number: $e');
     }
   }
 
@@ -2440,171 +2652,35 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           ),
         ),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            // Add Contact Section
-            Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: _isDarkMode ? Colors.grey[850] : Colors.grey[200],
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: _isDarkMode ? Colors.grey[700] : Colors.grey[400],
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.person_add,
-                          color: _isDarkMode ? Colors.white : Colors.black,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Contacto de emergencia',
-                              style: TextStyle(
-                                color: _isDarkMode ? Colors.white : Colors.black,
-                                fontSize: _fontSize * 1.125,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 5),
-                            Text(
-                              'Agrega a un contacto para llamar con el botón del inicio.',
-                              style: TextStyle(
-                                color: _isDarkMode ? Colors.grey : Colors.grey[600],
-                                fontSize: _fontSize * 0.875,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Agregar',
-                    style: TextStyle(
-                      color: _isDarkMode ? Colors.white : Colors.black,
-                      fontSize: _fontSize,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: _nameController,
-                    style: TextStyle(color: _isDarkMode ? Colors.white : Colors.black, fontSize: _fontSize),
-                    decoration: InputDecoration(
-                      hintText: 'Ingrese un nombre',
-                      hintStyle: TextStyle(color: _isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-                      filled: true,
-                      fillColor: _isDarkMode ? Colors.grey[700] : Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Número',
-                    style: TextStyle(
-                      color: _isDarkMode ? Colors.white : Colors.black,
-                      fontSize: _fontSize * 0.875,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  TextField(
-                    controller: _phoneController,
-                    style: TextStyle(color: _isDarkMode ? Colors.white : Colors.black, fontSize: _fontSize),
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      hintText: 'Ej +56 9 1934 4592',
-                      hintStyle: TextStyle(color: _isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-                      filled: true,
-                      fillColor: _isDarkMode ? Colors.grey[700] : Colors.grey[100],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  Center(
-                    child: ElevatedButton(
-                      onPressed: _addContact,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6A4C93),
-                        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      child: Text(
-                        'Agregar',
-                        style: TextStyle(color: Colors.white, fontSize: _fontSize),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Contacts List
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Agregados',
-                  style: TextStyle(
-                    color: _isDarkMode ? Colors.white : Colors.black,
-                    fontSize: _fontSize * 1.25,
-                    fontWeight: FontWeight.bold,
-                  ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              // Header Section
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: _isDarkMode ? Colors.grey[850] : Colors.grey[200],
+                  borderRadius: BorderRadius.circular(15),
                 ),
-              ),
-            ),
-            const SizedBox(height: 15),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _contacts.length,
-                itemBuilder: (context, index) {
-                  final contact = _contacts[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: _isDarkMode ? Colors.grey[850] : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
                         Container(
-                          width: 50,
-                          height: 50,
+                          width: 60,
+                          height: 60,
                           decoration: BoxDecoration(
-                            color: _isDarkMode ? Colors.grey[700] : Colors.grey[400],
-                            shape: BoxShape.circle,
+                            color: Colors.red.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
-                            Icons.person,
-                            color: _isDarkMode ? Colors.white : Colors.black,
-                            size: 28,
+                            Icons.emergency,
+                            color: Colors.red,
+                            size: 30,
                           ),
                         ),
                         const SizedBox(width: 15),
@@ -2613,124 +2689,209 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                contact['name']!,
+                                'Número de emergencia',
                                 style: TextStyle(
                                   color: _isDarkMode ? Colors.white : Colors.black,
-                                  fontSize: _fontSize,
+                                  fontSize: _fontSize * 1.125,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 5),
+                              SizedBox(height: 5),
                               Text(
-                                contact['description']!,
+                                'Este número se llamará al presionar el botón de emergencia.',
                                 style: TextStyle(
-                                  color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                  fontSize: _fontSize * 0.75,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                'Número • ${contact['phone']!}',
-                                style: TextStyle(
-                                  color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                  fontSize: _fontSize * 0.75,
+                                  color: _isDarkMode ? Colors.grey : Colors.grey[600],
+                                  fontSize: _fontSize * 0.875,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6A4C93),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
                       ],
                     ),
-                  );
-                },
+                    const SizedBox(height: 30),
+                    Text(
+                      'Número de teléfono',
+                      style: TextStyle(
+                        color: _isDarkMode ? Colors.white : Colors.black,
+                        fontSize: _fontSize,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _phoneController,
+                      style: TextStyle(color: _isDarkMode ? Colors.white : Colors.black, fontSize: _fontSize * 1.1),
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: 'Ej: +56 9 1234 5678',
+                        hintStyle: TextStyle(color: _isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+                        filled: true,
+                        fillColor: _isDarkMode ? Colors.grey[700] : Colors.grey[100],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _saveEmergencyNumber,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6A4C93),
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              'Guardar',
+                              style: TextStyle(color: Colors.white, fontSize: _fontSize, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        if (_emergencyNumber.isNotEmpty) ...[
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _clearEmergencyNumber,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: Text(
+                                'Eliminar',
+                                style: TextStyle(color: Colors.white, fontSize: _fontSize, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              // Current Number Display
+              if (_emergencyNumber.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Número configurado',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: _fontSize,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _emergencyNumber,
+                        style: TextStyle(
+                          color: _isDarkMode ? Colors.white : Colors.black,
+                          fontSize: _fontSize * 1.2,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Este número se llamará al presionar el botón de emergencia en la pantalla principal.',
+                        style: TextStyle(
+                          color: _isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                          fontSize: _fontSize * 0.9,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _addContact() async {
-    String name = _nameController.text.trim();
+  void _saveEmergencyNumber() async {
     String phone = _phoneController.text.trim();
-    
-    // Validaciones
-    if (name.isEmpty) {
-      _showErrorMessage('Por favor, ingresa un nombre');
-      return;
-    }
-    
-    if (name.length < 2) {
-      _showErrorMessage('El nombre debe tener al menos 2 caracteres');
-      return;
-    }
-    
+
     if (phone.isEmpty) {
-      _showErrorMessage('Por favor, ingresa un número de teléfono');
+      _showErrorMessage('Por favor, ingrese un número de teléfono');
       return;
     }
-    
+
     if (!PhoneValidator.isValidPhoneNumber(phone)) {
-      _showErrorMessage('Por favor, ingresa un número de teléfono válido\n(7-15 dígitos, puede incluir +, espacios, guiones y paréntesis)');
+      _showErrorMessage('Por favor, ingrese un número de teléfono válido\n(7-15 dígitos, puede incluir +, espacios, guiones y paréntesis)');
       return;
     }
-    
+
     try {
       String formattedPhone = PhoneValidator.formatPhoneNumber(phone);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('emergency_contact', formattedPhone);
       
-      // Verificar si el contacto ya existe
-      List<Map<String, String>> existingContacts = await EmergencyContactsManager.getContacts();
-      bool contactExists = existingContacts.any((contact) => 
-        contact['name']?.toLowerCase() == name.toLowerCase() || 
-        contact['phone'] == formattedPhone
-      );
-      
-      if (contactExists) {
-        _showErrorMessage('Ya existe un contacto con ese nombre o número de teléfono');
-        return;
-      }
-      
-      // Agregar el contacto
-      await EmergencyContactsManager.addContact(name, formattedPhone);
-      
-      // Actualizar la lista local
-      List<Map<String, String>> updatedContacts = await EmergencyContactsManager.getContacts();
       setState(() {
-        _contacts = updatedContacts.map((contact) => {
-          'name': contact['name'] ?? '',
-          'phone': contact['phone'] ?? '',
-          'description': 'Se llamará a este familiar al presionar el botón del inicio.',
-        }).toList();
+        _emergencyNumber = formattedPhone;
       });
       
-      _nameController.clear();
       _phoneController.clear();
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Contacto agregado exitosamente'),
+        SnackBar(
+          content: Text('Número de emergencia guardado exitosamente'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
       );
     } catch (e) {
-      print('Error adding contact: $e');
-      _showErrorMessage('Error al agregar el contacto. Por favor, inténtalo de nuevo.');
+      print('Error saving emergency number: $e');
+      _showErrorMessage('Error al guardar número. Por favor, inténtalo de nuevo.');
+    }
+  }
+
+  void _clearEmergencyNumber() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('emergency_contact');
+      
+      setState(() {
+        _emergencyNumber = '';
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Número de emergencia eliminado'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      print('Error clearing emergency number: $e');
+      _showErrorMessage('Error al eliminar número. Por favor, inténtalo de nuevo.');
     }
   }
   
@@ -2753,7 +2914,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _phoneController.dispose();
     super.dispose();
   }

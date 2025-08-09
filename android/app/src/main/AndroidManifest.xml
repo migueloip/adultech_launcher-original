@@ -4,9 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     
     <application
-        android:label="adultech_launcher"
+        android:label="AdulTech"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -56,5 +56,10 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
         </intent>
+        <!-- Consultas específicas para aplicaciones importantes -->
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.google.android.apps.photos" />
     </queries>
 </manifest>
