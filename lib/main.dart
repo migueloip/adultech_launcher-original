@@ -134,9 +134,18 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
-      body: SafeArea(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+        statusBarBrightness: _isDarkMode ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+        body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -205,7 +214,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                       ),
-                      child: const Text('Anterior'),
+                      child: Text(
+                        'Anterior',
+                        style: TextStyle(fontSize: _fontSize),
+                      ),
                     )
                   else
                     const SizedBox(),
@@ -216,13 +228,17 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                     ),
-                    child: Text(_currentStep == 3 ? 'Finalizar' : 'Siguiente'),
+                    child: Text(
+                      _currentStep == 3 ? 'Finalizar' : 'Siguiente',
+                      style: TextStyle(fontSize: _fontSize),
+                    ),
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -249,7 +265,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         Text(
           'Elige tu tema preferido',
           style: TextStyle(
-            fontSize: 24,
+            fontSize: _fontSize + 8,
             fontWeight: FontWeight.bold,
             color: _isDarkMode ? Colors.white : Colors.black,
           ),
@@ -286,7 +302,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                       Text(
                         'Modo Claro',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: _fontSize + 2,
                           fontWeight: FontWeight.bold,
                           color: !_isDarkMode ? const Color(0xFF6A4C93) : Colors.grey,
                         ),
@@ -325,7 +341,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                       Text(
                         'Modo Oscuro',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: _fontSize + 2,
                           fontWeight: FontWeight.bold,
                           color: _isDarkMode ? const Color(0xFF6A4C93) : Colors.grey,
                         ),
@@ -414,54 +430,57 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
           textAlign: TextAlign.center,
         ),
       ),
-    );
+      );
   }
 
   Widget _buildNameStep() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          '¿Cómo te llamas?',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: _isDarkMode ? Colors.white : Colors.black,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Este nombre aparecerá en tu pantalla de bienvenida',
-          style: TextStyle(
-            fontSize: 16,
-            color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 40),
-        TextField(
-          controller: _nameController,
-          style: TextStyle(
-            fontSize: 20,
-            color: _isDarkMode ? Colors.white : Colors.black,
-          ),
-          decoration: InputDecoration(
-            hintText: 'Escribe tu nombre aquí',
-            hintStyle: TextStyle(
-              color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '¿Cómo te llamas?',
+            style: TextStyle(
+              fontSize: _fontSize + 8,
+              fontWeight: FontWeight.bold,
+              color: _isDarkMode ? Colors.white : Colors.black,
             ),
-            filled: true,
-            fillColor: _isDarkMode ? Colors.grey[800] : Colors.grey[100],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.all(20),
+            textAlign: TextAlign.center,
           ),
-        ),
-      ],
-    );
+          const SizedBox(height: 20),
+          Text(
+            'Este nombre aparecerá en tu pantalla de bienvenida',
+            style: TextStyle(
+              fontSize: _fontSize,
+              color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 40),
+          TextField(
+            controller: _nameController,
+            style: TextStyle(
+              fontSize: _fontSize + 4,
+              color: _isDarkMode ? Colors.white : Colors.black,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Escribe tu nombre aquí',
+              hintStyle: TextStyle(
+                color: _isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+              filled: true,
+              fillColor: _isDarkMode ? Colors.grey[800] : Colors.grey[100],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(20),
+            ),
+          ),
+          const SizedBox(height: 100), // Espacio adicional para evitar que el teclado oculte el contenido
+         ],
+       ),
+     );
   }
 
   Widget _buildEmergencyContactStep() {
@@ -470,29 +489,29 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            'Contacto de emergencia',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: _isDarkMode ? Colors.white : Colors.black,
-            ),
-            textAlign: TextAlign.center,
+          'Contacto de emergencia',
+          style: TextStyle(
+            fontSize: _fontSize + 8,
+            fontWeight: FontWeight.bold,
+            color: _isDarkMode ? Colors.white : Colors.black,
           ),
-          const SizedBox(height: 20),
-          Text(
-            'Este número se llamará cuando presiones el botón de emergencia',
-            style: TextStyle(
-              fontSize: 16,
-              color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Este número se llamará cuando presiones el botón de emergencia',
+          style: TextStyle(
+            fontSize: _fontSize,
+            color: _isDarkMode ? Colors.grey[300] : Colors.grey[600],
           ),
+          textAlign: TextAlign.center,
+        ),
           const SizedBox(height: 40),
           TextField(
             controller: _emergencyContactController,
             keyboardType: TextInputType.phone,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: _fontSize + 4,
               color: _isDarkMode ? Colors.white : Colors.black,
             ),
             decoration: InputDecoration(
@@ -995,10 +1014,20 @@ class _LauncherScreenState extends State<LauncherScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
-      body: SafeArea(
-        child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+        statusBarBrightness: _isDarkMode ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+        body: SafeArea(
+          bottom: false, // Allow content to extend behind gesture area
+          child: Column(
           children: [
             // Emergency Button and Settings Button (Fixed at top)
             Container(
@@ -1103,6 +1132,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
